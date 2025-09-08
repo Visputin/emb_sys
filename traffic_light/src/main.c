@@ -6,7 +6,6 @@
 // Led pin configurations
 static const struct gpio_dt_spec red = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
 static const struct gpio_dt_spec green = GPIO_DT_SPEC_GET(DT_ALIAS(led1), gpios);
-static const struct gpio_dt_spec yellow = GPIO_DT_SPEC_GET(DT_ALIAS(led2), gpios);
 
 // Red led thread initialization
 #define STACKSIZE 500
@@ -37,26 +36,20 @@ int  init_led() {
 	int ret0 = gpio_pin_configure_dt(&red, GPIO_OUTPUT_ACTIVE);
 	if (ret0 < 0) {
 
-		printk("Error: Led configure failed\n");		
+		printk("Error: Red Led configure failed\n");		
 		return ret0;
 	}
-	int ret1 = gpio_pin_configure_dt(&yellow, GPIO_OUTPUT_ACTIVE);
-	if (ret1 < 0) {
-
-		printk("Error: Led configure failed\n");		
-		return ret1;
-	}
+	
 	int ret2 = gpio_pin_configure_dt(&green, GPIO_OUTPUT_ACTIVE);
 	if (ret2 < 0) {
 
-		printk("Error: Led configure failed\n");		
+		printk("Error: Green Led configure failed\n");		
 		return ret2;
 	}
 
 	// set all leds off
 	gpio_pin_set_dt(&red,0);
 	gpio_pin_set_dt(&green,0);
-	gpio_pin_set_dt(&yellow,0);
 
 	printk("Leds initialized ok\n");
 	
