@@ -1,2 +1,2 @@
-# emb_sys
-Course repository for weekly assignments
+# Embedded Systems
+## Course repository for weekly assignments
