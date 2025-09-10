@@ -1,16 +1,22 @@
+// #######################################################
+// Week 2 assignment currently finished for 2 points total
+// #######################################################
+
 #include <zephyr/kernel.h>
-#include <zephyr/sys/printk.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/sys/util.h>
+#include <zephyr/sys/printk.h>
+#include <inttypes.h>
 
 // Global variables
-int led_state = 0;	// 0 = red, 1 = yellow 2 = green, 3 = pause
-int led_direction = 1;	// 1 = forward in sequence, -1 = backwards in sequence
+int led_state = 0;						// 0 = red, 1 = yellow 2 = green, 3 = pause
+int prev_led_state = 0;					// store previous state when pausing
+int led_direction = 1;					// 1 = forward in sequence, -1 = backwards in sequence
 
 // Led pin configurations
 static const struct gpio_dt_spec red = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
 static const struct gpio_dt_spec green = GPIO_DT_SPEC_GET(DT_ALIAS(led1), gpios);
-<<<<<<< HEAD
 
 // Configure buttons
 #define BUTTON_2 DT_ALIAS(sw2)
@@ -20,11 +26,16 @@ static struct gpio_callback BUTTON_2_data;
 // Button interrupt handler
 void BUTTON_2_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
 {
-	// led_state == 3;
-	printk("Button pressed\n");
+	if (led_state != 3) {				// if not paused, pause and store previous state
+		prev_led_state = led_state;
+		led_state = 3;
+		printk("Button pressed, pausing sequence\n");
+	}
+	else {								// if paused, resume previous state
+		led_state = prev_led_state;
+		printk("Button pressed, resuming sequence\n");
+	}
 }
-=======
->>>>>>> 835154816ec879090fa83c5d508c9e287fa51d4f
 
 // Red led thread initialization
 #define STACKSIZE 500
@@ -39,8 +50,8 @@ K_THREAD_DEFINE(yellow_thread,STACKSIZE,yellow_led_task,NULL,NULL,NULL,PRIORITY,
 // Main program
 int main(void)
 {
-        init_led();
-		init_button();
+    init_led();
+	init_button();
 
 	return 0;
 }
@@ -100,67 +111,100 @@ int init_button() {
 	return 0;
 }
 
-// Task to handle red led
+// Task to handle red LED
 void red_led_task(void *, void *, void*) {
-	
-	printk("Red led thread started\n");
-	while (true) {
-		if (led_state == 0) {
+    printk("Red led thread started\n");
 
-			gpio_pin_set_dt(&red,1);	// turn red on
-			gpio_pin_set_dt(&green,0);	// make sure green is off
+    while (true) {
+        // Pause check at the start
+        if (led_state == 3) {
+            k_msleep(50);
+            continue;
+        }
 
-			k_sleep(K_SECONDS(1));		// keep red on for 1 seconds
+        if (led_state == 0) {
+            gpio_pin_set_dt(&red, 1);
+            gpio_pin_set_dt(&green, 0);
 
-			led_direction = 1;			// change direction to forward
-			led_state = 1;				// change state to yellow
-		}
-		k_msleep(50);
-	}
+            for (int i = 0; i < 100; i++) {  // 100 x 10ms = 1 second
+                if (led_state == 3) break;   // stop if paused
+                k_msleep(10);
+                k_yield();
+            }
+
+            if (led_state != 3) {
+                led_direction = 1;  // forward
+                led_state = 1;      // move to yellow
+            }
+        }
+
+        k_msleep(50);
+    }
 }
 
-// Task to handle yellow led
+// Task to handle yellow LED
 void yellow_led_task(void *, void *, void*) {
-	
-	printk("Yellow led thread started\n");
-	while (true) {
-		if (led_state == 1) {
+    printk("Yellow led thread started\n");
 
-			// turn green and red on to make yellow
-			gpio_pin_set_dt(&green,1);
-			gpio_pin_set_dt(&red,1);
+    while (true) {
+        // Pause check at the start
+        if (led_state == 3) {
+            k_msleep(50);
+            continue;
+        }
 
-			k_sleep(K_SECONDS(1));		// keep yellow on for 1 seconds
+        if (led_state == 1) {
+            // Yellow = red + green on
+            gpio_pin_set_dt(&red, 1);
+            gpio_pin_set_dt(&green, 1);
 
-			// check wether to go forward or backwards in sequence
-			if (led_direction == -1) {
-				led_state = 0;
-			}
-			else {
-				led_state = 2;
-			}
-		}
-		k_msleep(50);
-	}
+            for (int i = 0; i < 100; i++) {  // 50 x 10ms = 1 second
+                if (led_state == 3) break;  // stop if paused
+                k_msleep(10);
+                k_yield();
+            }
+
+            if (led_state != 3) {
+                if (led_direction == 1)
+                    led_state = 2;  // go to green
+                else
+                    led_state = 0;  // go back to red
+            }
+        }
+
+        k_msleep(50);
+    }
 }
 
-// Task to handle green led
+// Task to handle green LED
 void green_led_task(void *, void *, void*) {
-	
-	printk("Green led thread started\n");
-	while (true) {
-		if (led_state == 2) {
-			
-			gpio_pin_set_dt(&green,1);		// turn green on
-			gpio_pin_set_dt(&red,0);		// make sure red is off
+    printk("Green led thread started\n");
 
-			k_sleep(K_SECONDS(1));			// keep green on for 1 seconds
+    while (true) {
+        // Pause check at the start
+        if (led_state == 3) {
+            k_msleep(50);
+            continue;
+        }
 
-			// change direction to backwards
-			led_direction = -1;				
-			led_state = 1;
-		}
-		k_msleep(50);
-	}
+        if (led_state == 2) {
+            gpio_pin_set_dt(&red, 0);
+            gpio_pin_set_dt(&green, 1);
+
+            for (int i = 0; i < 100; i++) {  // 100 x 10ms = 1 second
+                if (led_state == 3) break;   // stop if paused
+                k_msleep(10);
+                k_yield();
+            }
+
+            if (led_state != 3) {
+                led_direction = -1;  // backward
+                led_state = 1;       // move to yellow
+            }
+        }
+
+        k_msleep(50);
+    }
 }
+
 
