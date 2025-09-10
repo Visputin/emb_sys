@@ -10,6 +10,7 @@ int led_direction = 1;	// 1 = forward in sequence, -1 = backwards in sequence
 // Led pin configurations
 static const struct gpio_dt_spec red = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
 static const struct gpio_dt_spec green = GPIO_DT_SPEC_GET(DT_ALIAS(led1), gpios);
+<<<<<<< HEAD
 
 // Configure buttons
 #define BUTTON_2 DT_ALIAS(sw2)
@@ -22,6 +23,8 @@ void BUTTON_2_handler(const struct device *dev, struct gpio_callback *cb, uint32
 	// led_state == 3;
 	printk("Button pressed\n");
 }
+=======
+>>>>>>> 835154816ec879090fa83c5d508c9e287fa51d4f
 
 // Red led thread initialization
 #define STACKSIZE 500
