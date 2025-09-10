@@ -1,2 +1,3 @@
 # Embedded Systems
-## Repository for weeky course assignments
+## Course repository for weekly assignments
+### main-branch always contains the latest assignment, check other branches for previous work.
