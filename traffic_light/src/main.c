@@ -1,7 +1,5 @@
 // ##############################################################################################################
-// ##############################################################################################################
 // 
-// ##############################################################################################################
 // ##############################################################################################################
 
 #include <zephyr/kernel.h>
@@ -39,7 +37,35 @@ void BUTTON_2_handler(const struct device *dev, struct gpio_callback *cb, uint32
 	}
 }
 
-// Red led thread initialization
+// Button initialization
+int init_button() {
+
+	int ret;
+	if (!gpio_is_ready_dt(&BUTTON_2)) {
+		printk("Error: button 0 is not ready\n");
+		return -1;
+	}
+
+	ret = gpio_pin_configure_dt(&BUTTON_2, GPIO_INPUT);
+	if (ret != 0) {
+		printk("Error: failed to configure pin\n");
+		return -1;
+	}
+
+	ret = gpio_pin_interrupt_configure_dt(&BUTTON_2, GPIO_INT_EDGE_TO_ACTIVE);
+	if (ret != 0) {
+		printk("Error: failed to configure interrupt on pin\n");
+		return -1;
+	}
+
+	gpio_init_callback(&BUTTON_2_data, BUTTON_2_handler, BIT(BUTTON_2.pin));
+	gpio_add_callback(BUTTON_2.port, &BUTTON_2_data);
+	printk("Set up button 0 ok\n");
+	
+	return 0;
+}
+
+// Led thread initializations
 #define STACKSIZE 500
 #define PRIORITY 5
 void red_led_task(void *, void *, void*);
@@ -48,15 +74,6 @@ void yellow_led_task(void *, void *, void*);
 K_THREAD_DEFINE(red_thread,STACKSIZE,red_led_task,NULL,NULL,NULL,PRIORITY,0,0);
 K_THREAD_DEFINE(green_thread,STACKSIZE,green_led_task,NULL,NULL,NULL,PRIORITY,0,0);
 K_THREAD_DEFINE(yellow_thread,STACKSIZE,yellow_led_task,NULL,NULL,NULL,PRIORITY,0,0);
-
-// Main program
-int main(void)
-{
-    init_led();
-	init_button();
-
-	return 0;
-}
 
 // Initialize leds
 int  init_led() {
@@ -85,31 +102,61 @@ int  init_led() {
 	return 0;
 }
 
-// Button initialization
-int init_button() {
+// UART initialization
+#define UART_DEVICE_NODE DT_CHOSEN(zephyr_shell_uart)
+static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 
-	int ret;
-	if (!gpio_is_ready_dt(&BUTTON_2)) {
-		printk("Error: button 0 is not ready\n");
-		return -1;
-	}
+int init_uart(void) {
+	// UART initialization
+	if (!device_is_ready(uart_dev)) {
+		return 1;
+	} 
+	return 0;
+}
 
-	ret = gpio_pin_configure_dt(&BUTTON_2, GPIO_INPUT);
-	if (ret != 0) {
-		printk("Error: failed to configure pin\n");
-		return -1;
-	}
+// FIFO Thread initializations
+void red_task(void *, void *, void*);
+void green_task(void *, void *, void*);
+#define STACKSIZE 500
+#define PRIORITY 5
+K_THREAD_DEFINE(red_thread,STACKSIZE,red_task,NULL,NULL,NULL,PRIORITY,0,0);
+K_THREAD_DEFINE(green_thread,STACKSIZE,green_task,NULL,NULL,NULL,PRIORITY,0,0);
 
-	ret = gpio_pin_interrupt_configure_dt(&BUTTON_2, GPIO_INT_EDGE_TO_ACTIVE);
-	if (ret != 0) {
-		printk("Error: failed to configure interrupt on pin\n");
-		return -1;
-	}
+// Create FIFO buffer
+K_FIFO_DEFINE(data_fifo);
 
-	gpio_init_callback(&BUTTON_2_data, BUTTON_2_handler, BIT(BUTTON_2.pin));
-	gpio_add_callback(BUTTON_2.port, &BUTTON_2_data);
-	printk("Set up button 0 ok\n");
+// Data in FIFO
+struct data_t {
+	void *fifo_reserved;
+	int count;
+};
+
+// Main program
+int main(void)
+{
+    init_led();
+	init_button();
 	
+    int ret = init_uart();
+	if (ret != 0) {
+		printk("UART initialization failed!\n");
+		return ret;
+	}
+
+	// Wait for everything to initialize and threads to start
+	k_msleep(100);
+
+	printk("Started serial read example\n");
+
+	// Store received character
+	char rc=0;
+	while (true) {
+		// Ask UART if data available
+		if (uart_poll_in(uart_dev,&rc) == 0) {
+			printk("Received: %c\n",rc);
+		}
+		k_yield();
+	}
 	return 0;
 }
 
