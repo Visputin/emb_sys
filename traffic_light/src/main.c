@@ -31,9 +31,6 @@ static const struct gpio_dt_spec green = GPIO_DT_SPEC_GET(DT_ALIAS(led1), gpios)
 void red_led_task(void *, void *, void*);
 void yellow_led_task(void *, void *, void*);
 void green_led_task(void *, void *, void*);
-K_THREAD_DEFINE(red_thread, STACKSIZE, red_led_task, NULL, NULL, NULL, PRIORITY, 0, 0);
-K_THREAD_DEFINE(yellow_thread, STACKSIZE, yellow_led_task, NULL, NULL, NULL, PRIORITY, 0, 0);
-K_THREAD_DEFINE(green_thread, STACKSIZE, green_led_task, NULL, NULL, NULL, PRIORITY, 0, 0);
 
 // Dispatcher FIFO
 K_FIFO_DEFINE(dispatcher_fifo);
@@ -115,6 +112,9 @@ void red_led_task(void *, void *, void*) {
             if (seq_index < seq_len && custom_seq[seq_index] == 'R') {
                 gpio_pin_set_dt(&red, 1);
                 gpio_pin_set_dt(&green, 0);
+
+                printk("Red LED ON\n");
+
                 k_msleep(1000);
                 seq_index++;
                 if (seq_index >= seq_len) mode = AUTO;
@@ -134,7 +134,7 @@ void red_led_task(void *, void *, void*) {
             }
             if (led_state != 3) {
                 led_direction = 1;
-                led_state = 1; // RED -> YELLOW
+                led_state = 1;
             }
         }
         k_msleep(50);
@@ -145,13 +145,16 @@ void red_led_task(void *, void *, void*) {
 void yellow_led_task(void *, void *, void*) {
     printk("Yellow LED thread started\n");
     while (true) {
-        if (led_state == 3) { k_msleep(50); continue; } // pause
+        if (led_state == 3) { k_msleep(50); continue; }
 
         // Manual mode
         if (mode == MANUAL) {
             if (seq_index < seq_len && custom_seq[seq_index] == 'Y') {
                 gpio_pin_set_dt(&red, 1);
                 gpio_pin_set_dt(&green, 1);
+
+                printk("Yellow LED ON\n");
+
                 k_msleep(1000);
                 seq_index++;
                 if (seq_index >= seq_len) mode = AUTO;
@@ -171,9 +174,9 @@ void yellow_led_task(void *, void *, void*) {
             }
             if (led_state != 3) {
                 if (led_direction == 1)
-                    led_state = 2; // YELLOW -> GREEN
+                    led_state = 2;
                 else
-                    led_state = 0; // YELLOW -> RED (backward)
+                    led_state = 0;
             }
         }
         k_msleep(50);
@@ -191,6 +194,9 @@ void green_led_task(void *, void *, void*) {
             if (seq_index < seq_len && custom_seq[seq_index] == 'G') {
                 gpio_pin_set_dt(&red, 0);
                 gpio_pin_set_dt(&green, 1);
+
+                printk("Green LED ON\n");
+
                 k_msleep(1000);
                 seq_index++;
                 if (seq_index >= seq_len) mode = AUTO;
@@ -210,7 +216,7 @@ void green_led_task(void *, void *, void*) {
             }
             if (led_state != 3) {
                 led_direction = -1;
-                led_state = 1; // GREEN -> YELLOW
+                led_state = 1;
             }
         }
         k_msleep(50);
@@ -261,6 +267,7 @@ static void dispatcher_task(void *unused1, void *unused2, void *unused3)
         mode = MANUAL;
 
         printk("Dispatcher received sequence: %s\n", custom_seq);
+        
 
         k_free(rec_item);
     }
@@ -285,3 +292,6 @@ int main(void)
 // Threads
 K_THREAD_DEFINE(uart_thread, STACKSIZE, uart_task, NULL, NULL, NULL, PRIORITY, 0, 0);
 K_THREAD_DEFINE(dis_thread, STACKSIZE, dispatcher_task, NULL, NULL, NULL, PRIORITY, 0, 0);
+K_THREAD_DEFINE(red_thread, STACKSIZE, red_led_task, NULL, NULL, NULL, PRIORITY, 0, 0);
+K_THREAD_DEFINE(yellow_thread, STACKSIZE, yellow_led_task, NULL, NULL, NULL, PRIORITY, 0, 0);
+K_THREAD_DEFINE(green_thread, STACKSIZE, green_led_task, NULL, NULL, NULL, PRIORITY, 0, 0);
