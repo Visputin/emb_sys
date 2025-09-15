@@ -13,10 +13,10 @@
 #include <ctype.h>
 
 // Global variables
-int led_state = 0;                       // 0 = red, 1 = yellow, 2 = green, 3 = pause
-int prev_led_state = 0;                  // store previous state when pausing
-int led_direction = 1;                   // 1 = forward, -1 = backward
-enum { AUTO, MANUAL } mode = AUTO;
+int led_state = 0;                      // 0 = red, 1 = yellow, 2 = green, 3 = pause
+int prev_led_state = 0;                 // store previous state when pausing
+int led_direction = 1;                  // 1 = forward, -1 = backward
+enum { AUTO, MANUAL } mode = AUTO;      // operation mode, MANUAL(through UART input) or AUTO
 static char custom_seq[20];
 static int seq_index = 0;
 static int seq_len = 0;
@@ -46,11 +46,11 @@ static struct gpio_callback BUTTON_2_data;
 // Button interrupt handler
 void BUTTON_2_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
 {
-    if (led_state != 3) {          // pause
+    if (led_state != 3) {
         prev_led_state = led_state;
         led_state = 3;
         printk("Button pressed, pausing sequence\n");
-    } else {                        // resume
+    } else {
         led_state = prev_led_state;
         printk("Button pressed, resuming sequence\n");
     }
@@ -108,7 +108,7 @@ struct data_t {
 void red_led_task(void *, void *, void*) {
     printk("Red LED thread started\n");
     while (true) {
-        if (led_state == 3) { k_msleep(50); continue; } // pause
+        if (led_state == 3) { k_msleep(50); continue; }
 
         // Manual mode
         if (mode == MANUAL) {
@@ -184,7 +184,7 @@ void yellow_led_task(void *, void *, void*) {
 void green_led_task(void *, void *, void*) {
     printk("Green LED thread started\n");
     while (true) {
-        if (led_state == 3) { k_msleep(50); continue; } // pause
+        if (led_state == 3) { k_msleep(50); continue; }
 
         // Manual mode
         if (mode == MANUAL) {
@@ -227,7 +227,7 @@ static void uart_task(void *unused1, void *unused2, void *unused3)
 
     while (true) {
         if (uart_poll_in(uart_dev, &rc) == 0) {
-            rc = toupper((unsigned char)rc);  // normalize to uppercase
+            rc = toupper((unsigned char)rc);
             if (rc != '\r' && rc != '\n' && uart_msg_cnt < sizeof(uart_msg)-1) {
                 uart_msg[uart_msg_cnt++] = rc;
             } else if (uart_msg_cnt > 0) {
