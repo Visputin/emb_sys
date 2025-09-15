@@ -110,12 +110,19 @@ void red_led_task(void *, void *, void*) {
         // Manual mode
         if (mode == MANUAL) {
             if (seq_index < seq_len && custom_seq[seq_index] == 'R') {
+
+                // Parse duration from UART input if provided, otherwise default to 1000 ms
+                uint32_t duration = 1000;
+                char *comma = strchr(custom_seq, ',');
+                if (comma) duration = atoi(comma + 1);
+
+                // Turn on correct leds
                 gpio_pin_set_dt(&red, 1);
                 gpio_pin_set_dt(&green, 0);
 
-                printk("Red LED ON\n");
+                printk("Red LED ON for %d milliseconds\n", duration);
 
-                k_msleep(1000);
+                k_msleep(duration);
                 seq_index++;
                 if (seq_index >= seq_len) mode = AUTO;
             }
@@ -150,12 +157,18 @@ void yellow_led_task(void *, void *, void*) {
         // Manual mode
         if (mode == MANUAL) {
             if (seq_index < seq_len && custom_seq[seq_index] == 'Y') {
+
+                uint32_t duration = 1000;
+                char *comma = strchr(custom_seq, ',');
+                if (comma) duration = atoi(comma + 1);
+
+                // Turn on correct leds
                 gpio_pin_set_dt(&red, 1);
                 gpio_pin_set_dt(&green, 1);
 
-                printk("Yellow LED ON\n");
+                printk("Yellow LED ON for %d milliseconds\n", duration);
 
-                k_msleep(1000);
+                k_msleep(duration);
                 seq_index++;
                 if (seq_index >= seq_len) mode = AUTO;
             }
@@ -192,12 +205,18 @@ void green_led_task(void *, void *, void*) {
         // Manual mode
         if (mode == MANUAL) {
             if (seq_index < seq_len && custom_seq[seq_index] == 'G') {
+
+                uint32_t duration = 1000;
+                char *comma = strchr(custom_seq, ',');
+                if (comma) duration = atoi(comma + 1);
+
+                // Turn on correct leds
                 gpio_pin_set_dt(&red, 0);
                 gpio_pin_set_dt(&green, 1);
 
-                printk("Green LED ON\n");
+                printk("Green LED ON for %d milliseconds\n", duration);
 
-                k_msleep(1000);
+                k_msleep(duration);
                 seq_index++;
                 if (seq_index >= seq_len) mode = AUTO;
             }
@@ -262,12 +281,11 @@ static void dispatcher_task(void *unused1, void *unused2, void *unused3)
 
         strncpy(custom_seq, rec_item->msg, sizeof(custom_seq)-1);
         custom_seq[sizeof(custom_seq)-1] = '\0';
-        seq_len = strlen(custom_seq);
+        seq_len = 1;
         seq_index = 0;
         mode = MANUAL;
 
-        printk("Dispatcher received sequence: %s\n", custom_seq);
-        
+        printk("Dispatcher received: %s\n", custom_seq);
 
         k_free(rec_item);
     }
