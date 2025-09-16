@@ -1,5 +1,5 @@
 // ##############################################################################################################
-// Week 3 assignment currently finished for 1 points total
+// Week 4 assignment currently finished for 1 points total
 // ##############################################################################################################
 
 #include <zephyr/kernel.h>
@@ -11,6 +11,7 @@
 #include <zephyr/drivers/uart.h>
 #include <string.h>
 #include <ctype.h>
+#include <zephyr/timing/timing.h>
 
 // Global variables
 int led_state = 0;                      // 0 = red, 1 = yellow, 2 = green, 3 = pause
@@ -20,17 +21,25 @@ enum { AUTO, MANUAL } mode = AUTO;      // operation mode, MANUAL(through UART i
 static char custom_seq[20];
 static int seq_index = 0;
 static int seq_len = 0;
+uint64_t red_timing_ns = 0;
+uint64_t yellow_timing_ns = 0;
+uint64_t green_timing_ns = 0;
+bool red_done = false;
+bool yellow_done = false;
+bool green_done = false;
 
 // Led pin configurations
 static const struct gpio_dt_spec red   = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
 static const struct gpio_dt_spec green = GPIO_DT_SPEC_GET(DT_ALIAS(led1), gpios);
 
-// LED thread initializations
+// Thread initializations
 #define STACKSIZE 500
 #define PRIORITY 5
 void red_led_task(void *, void *, void*);
 void yellow_led_task(void *, void *, void*);
 void green_led_task(void *, void *, void*);
+
+// Timing thread initialization
 
 // Dispatcher FIFO
 K_FIFO_DEFINE(dispatcher_fifo);
@@ -104,6 +113,9 @@ struct data_t {
 // Red LED
 void red_led_task(void *, void *, void*) {
     printk("Red LED thread started\n");
+
+    timing_start();
+
     while (true) {
         if (led_state == 3) { k_msleep(50); continue; }
 
@@ -125,8 +137,13 @@ void red_led_task(void *, void *, void*) {
 
         // AUTO sequence
         if (led_state == 0) {
+            timing_t red_start_time = timing_counter_get();
+
             gpio_pin_set_dt(&red, 1);
             gpio_pin_set_dt(&green, 0);
+            red_done = true;
+            //printk("RED ON\n");
+
             for (int i = 0; i < 100; i++) {
                 if (led_state == 3) break;
                 k_msleep(10);
@@ -136,7 +153,13 @@ void red_led_task(void *, void *, void*) {
                 led_direction = 1;
                 led_state = 1;
             }
+
+            timing_t red_end_time = timing_counter_get();
+            //timing_stop();
+            red_timing_ns = timing_cycles_to_ns(timing_cycles_get(&red_start_time, &red_end_time));
+            //printk("Red task: %lld microseconds\n", red_timing_ns / 1000);
         }
+
         k_msleep(50);
     }
 }
@@ -144,6 +167,9 @@ void red_led_task(void *, void *, void*) {
 // Yellow LED
 void yellow_led_task(void *, void *, void*) {
     printk("Yellow LED thread started\n");
+
+    timing_start();
+
     while (true) {
         if (led_state == 3) { k_msleep(50); continue; }
 
@@ -165,8 +191,13 @@ void yellow_led_task(void *, void *, void*) {
 
         // AUTO sequence
         if (led_state == 1) {
+            timing_t yellow_start_time = timing_counter_get();
+
             gpio_pin_set_dt(&red, 1);
             gpio_pin_set_dt(&green, 1);
+            yellow_done = true;
+            //printk("YELLOW ON\n");
+
             for (int i = 0; i < 100; i++) {
                 if (led_state == 3) break;
                 k_msleep(10);
@@ -178,7 +209,13 @@ void yellow_led_task(void *, void *, void*) {
                 else
                     led_state = 0;
             }
+
+            timing_t yellow_end_time = timing_counter_get();
+            //timing_stop();
+            yellow_timing_ns = timing_cycles_to_ns(timing_cycles_get(&yellow_start_time, &yellow_end_time));
+            //printk("Yellow task: %lld microseconds\n", yellow_timing_ns / 1000);
         }
+
         k_msleep(50);
     }
 }
@@ -186,6 +223,9 @@ void yellow_led_task(void *, void *, void*) {
 // Green LED
 void green_led_task(void *, void *, void*) {
     printk("Green LED thread started\n");
+
+    timing_start();
+
     while (true) {
         if (led_state == 3) { k_msleep(50); continue; }
 
@@ -195,7 +235,7 @@ void green_led_task(void *, void *, void*) {
                 gpio_pin_set_dt(&red, 0);
                 gpio_pin_set_dt(&green, 1);
 
-                printk("Green LED ON\n");
+                //printk("Green LED ON\n");
 
                 k_msleep(1000);
                 seq_index++;
@@ -207,8 +247,13 @@ void green_led_task(void *, void *, void*) {
 
         // AUTO sequence
         if (led_state == 2) {
+            timing_t green_start_time = timing_counter_get();
+
             gpio_pin_set_dt(&red, 0);
             gpio_pin_set_dt(&green, 1);
+            green_done = true;
+            printk("GREEN ON\n");
+
             for (int i = 0; i < 100; i++) {
                 if (led_state == 3) break;
                 k_msleep(10);
@@ -218,10 +263,43 @@ void green_led_task(void *, void *, void*) {
                 led_direction = -1;
                 led_state = 1;
             }
+
+            timing_t green_end_time = timing_counter_get();
+            //timing_stop();
+            green_timing_ns = timing_cycles_to_ns(timing_cycles_get(&green_start_time, &green_end_time));
+            //printk("Green task: %lld microseconds\n", green_timing_ns / 1000);
         }
+
         k_msleep(50);
     }
 }
+
+void timing_monitor_task(void *, void *, void*) {
+    while (true) {
+        // Only calculate when R, Y, G have finished
+        if (red_done && yellow_done && green_done) {
+            uint64_t total_ns = red_timing_ns + yellow_timing_ns + green_timing_ns;
+            
+            printk("====================================\n");
+            printk("======= WITHOUT DEBUG PRINTS =======\n");
+            printk("====================================\n");
+            printk("Red task: %lld microseconds\n", red_timing_ns / 1000);
+            printk("Yellow task: %lld microseconds\n", yellow_timing_ns / 1000);
+            printk("Green task: %lld microseconds\n", green_timing_ns / 1000);
+            printk("Total R->Y->G sequence time: %lld microseconds\n", total_ns / 1000);
+            printk("====================================\n");
+            printk("====================================\n");
+
+            // Reset flags for the next R->Y->G cycle
+            red_done = false;
+            yellow_done = false;
+            green_done = false;
+        }
+        k_msleep(10); // avoid busy wait
+    }
+}
+
+
 
 // UART Task
 static void uart_task(void *unused1, void *unused2, void *unused3)
@@ -234,7 +312,7 @@ static void uart_task(void *unused1, void *unused2, void *unused3)
     while (true) {
         if (uart_poll_in(uart_dev, &rc) == 0) {
             rc = toupper((unsigned char)rc);
-            if (rc != '\r' && rc != '\n' && uart_msg_cnt < sizeof(uart_msg)-1) {
+            if (rc != '\r' && uart_msg_cnt < sizeof(uart_msg)-1) {
                 uart_msg[uart_msg_cnt++] = rc;
             } else if (uart_msg_cnt > 0) {
                 uart_msg[uart_msg_cnt] = '\0';
@@ -268,7 +346,6 @@ static void dispatcher_task(void *unused1, void *unused2, void *unused3)
 
         printk("Dispatcher received sequence: %s\n", custom_seq);
         
-
         k_free(rec_item);
     }
 }
@@ -278,14 +355,16 @@ int main(void)
 {
     init_led();
     init_button();
+    timing_init();
 
     if (init_uart() != 0) {
         printk("UART initialization failed!\n");
         return -1;
     }
 
-    printk("Traffic light started. Type sequence via UART to override.\n");
+    // Wait for everything to initialize and threads to start
     k_msleep(100);
+    printk("Traffic light started. Type sequence via UART to override.\n");
     return 0;
 }
 
@@ -295,3 +374,4 @@ K_THREAD_DEFINE(dis_thread, STACKSIZE, dispatcher_task, NULL, NULL, NULL, PRIORI
 K_THREAD_DEFINE(red_thread, STACKSIZE, red_led_task, NULL, NULL, NULL, PRIORITY, 0, 0);
 K_THREAD_DEFINE(yellow_thread, STACKSIZE, yellow_led_task, NULL, NULL, NULL, PRIORITY, 0, 0);
 K_THREAD_DEFINE(green_thread, STACKSIZE, green_led_task, NULL, NULL, NULL, PRIORITY, 0, 0);
+K_THREAD_DEFINE(monitor_thread, STACKSIZE, timing_monitor_task, NULL, NULL, NULL, PRIORITY, 0, 0);
