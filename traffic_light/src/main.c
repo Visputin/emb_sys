@@ -1,5 +1,5 @@
 // ##############################################################################################################
-// Week 4 assignment currently finished for 0 points total
+// Week 4 assignment currently finished for 1 points total
 // ##############################################################################################################
 
 #include <zephyr/kernel.h>
@@ -21,6 +21,9 @@ enum { AUTO, MANUAL } mode = AUTO;      // operation mode, MANUAL(through UART i
 static char custom_seq[20];
 static int seq_index = 0;
 static int seq_len = 0;
+uint64_t red_timing_ns = 0;
+uint64_t yellow_timing_ns = 0;
+uint64_t green_timing_ns = 0;
 
 // Led pin configurations
 static const struct gpio_dt_spec red   = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
@@ -135,6 +138,9 @@ void red_led_task(void *, void *, void*) {
 
             gpio_pin_set_dt(&red, 1);
             gpio_pin_set_dt(&green, 0);
+
+            printk("RED ON\n");
+
             for (int i = 0; i < 100; i++) {
                 if (led_state == 3) break;
                 k_msleep(10);
@@ -147,8 +153,8 @@ void red_led_task(void *, void *, void*) {
 
             timing_t red_end_time = timing_counter_get();
             //timing_stop();
-            uint64_t red_timing_ns = timing_cycles_to_ns(timing_cycles_get(&red_start_time, &red_end_time));
-            printk("Red task: %lld\n", red_timing_ns / 1000);
+            red_timing_ns = timing_cycles_to_ns(timing_cycles_get(&red_start_time, &red_end_time));
+            printk("Red task: %lld microseconds\n", red_timing_ns / 1000);
         }
 
         k_msleep(50);
@@ -186,6 +192,8 @@ void yellow_led_task(void *, void *, void*) {
 
             gpio_pin_set_dt(&red, 1);
             gpio_pin_set_dt(&green, 1);
+            printk("YELLOW ON\n");
+
             for (int i = 0; i < 100; i++) {
                 if (led_state == 3) break;
                 k_msleep(10);
@@ -200,8 +208,8 @@ void yellow_led_task(void *, void *, void*) {
 
             timing_t yellow_end_time = timing_counter_get();
             //timing_stop();
-            uint64_t yellow_timing_ns = timing_cycles_to_ns(timing_cycles_get(&yellow_start_time, &yellow_end_time));
-            printk("Yellow task: %lld\n", yellow_timing_ns / 1000);
+            yellow_timing_ns = timing_cycles_to_ns(timing_cycles_get(&yellow_start_time, &yellow_end_time));
+            printk("Yellow task: %lld microseconds\n", yellow_timing_ns / 1000);
         }
 
         k_msleep(50);
@@ -239,6 +247,8 @@ void green_led_task(void *, void *, void*) {
 
             gpio_pin_set_dt(&red, 0);
             gpio_pin_set_dt(&green, 1);
+            printk("GREEN ON\n");
+
             for (int i = 0; i < 100; i++) {
                 if (led_state == 3) break;
                 k_msleep(10);
@@ -251,12 +261,22 @@ void green_led_task(void *, void *, void*) {
 
             timing_t green_end_time = timing_counter_get();
             //timing_stop();
-            uint64_t green_timing_ns = timing_cycles_to_ns(timing_cycles_get(&green_start_time, &green_end_time));
-            printk("Green task: %lld\n", green_timing_ns / 1000);
+            green_timing_ns = timing_cycles_to_ns(timing_cycles_get(&green_start_time, &green_end_time));
+            printk("Green task: %lld microseconds\n", green_timing_ns / 1000);
         }
 
         k_msleep(50);
     }
+}
+
+void calculate_timing() {
+    uint64_t total_time = red_timing_ns + yellow_timing_ns + green_timing_ns;
+    printk("Total LED cycle time: %lld microseconds WITH debug prints\n", total_time / 1000);
+}
+
+void monitor_timing() {
+    calculate_timing();
+    k_msleep(1000);
 }
 
 // UART Task
@@ -314,6 +334,7 @@ int main(void)
     init_led();
     init_button();
     timing_init();
+    monitor_timing();
 
     if (init_uart() != 0) {
         printk("UART initialization failed!\n");
