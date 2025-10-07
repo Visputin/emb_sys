@@ -1,5 +1,5 @@
 // ##############################################################################################################
-// Week 4 assignment currently finished for 1 points total
+// Week 5 assignment currently finished for 2 points total
 // ##############################################################################################################
 
 #include <zephyr/kernel.h>
@@ -12,6 +12,10 @@
 #include <string.h>
 #include <ctype.h>
 #include <zephyr/timing/timing.h>
+#include "timeparser.h"
+
+
+
 
 // Global variables
 int led_state = 0;                      // 0 = red, 1 = yellow, 2 = green, 3 = pause
@@ -38,8 +42,6 @@ static const struct gpio_dt_spec green = GPIO_DT_SPEC_GET(DT_ALIAS(led1), gpios)
 void red_led_task(void *, void *, void*);
 void yellow_led_task(void *, void *, void*);
 void green_led_task(void *, void *, void*);
-
-// Timing thread initialization
 
 // Dispatcher FIFO
 K_FIFO_DEFINE(dispatcher_fifo);
@@ -93,6 +95,44 @@ int init_led() {
     printk("LEDs initialized\n");
     return 0;
 }
+
+// Red LED one-shot timer handler
+void red_timer_handler(struct k_timer *timer_id) {
+    gpio_pin_set_dt(&red, 0);  // turn off red LED
+    printk("Red LED OFF\n");
+}
+
+// Declare the timer
+K_TIMER_DEFINE(red_timer, red_timer_handler, NULL);
+
+// Timer handler that starts the red LED for 3 seconds
+void action_delay_handler(struct k_timer *timer_id) {
+    printk("Time reached! Turning red LED ON for 3 seconds.\n");
+    gpio_pin_set_dt(&red, 1);
+    gpio_pin_set_dt(&green, 0);
+
+    // Start the 3-second red timer
+    k_timer_start(&red_timer, K_SECONDS(3), K_NO_WAIT);
+}
+
+// Declare the delay timer
+K_TIMER_DEFINE(action_delay_timer, action_delay_handler, NULL);
+
+
+// This runs when the timer expires
+void action_timer_handler(struct k_timer *timer_id) {
+    printk("Timer expired! Turning on red light for 3 seconds...\n");
+
+    gpio_pin_set_dt(&red, 1);
+    gpio_pin_set_dt(&green, 0);
+
+    k_msleep(3000);  // keep red on for 3 seconds
+
+    gpio_pin_set_dt(&red, 0);
+    printk("Red light off\n");
+}
+
+K_TIMER_DEFINE(action_timer, action_timer_handler, NULL);  // Declare timer
 
 // UART initialization
 #define UART_DEVICE_NODE DT_CHOSEN(zephyr_shell_uart)
@@ -235,7 +275,7 @@ void green_led_task(void *, void *, void*) {
                 gpio_pin_set_dt(&red, 0);
                 gpio_pin_set_dt(&green, 1);
 
-                //printk("Green LED ON\n");
+                printk("Green LED ON\n");
 
                 k_msleep(1000);
                 seq_index++;
@@ -252,7 +292,7 @@ void green_led_task(void *, void *, void*) {
             gpio_pin_set_dt(&red, 0);
             gpio_pin_set_dt(&green, 1);
             green_done = true;
-            printk("GREEN ON\n");
+            // printk("GREEN ON\n");
 
             for (int i = 0; i < 100; i++) {
                 if (led_state == 3) break;
@@ -274,30 +314,30 @@ void green_led_task(void *, void *, void*) {
     }
 }
 
-void timing_monitor_task(void *, void *, void*) {
-    while (true) {
-        // Only calculate when R, Y, G have finished
-        if (red_done && yellow_done && green_done) {
-            uint64_t total_ns = red_timing_ns + yellow_timing_ns + green_timing_ns;
+// void timing_monitor_task(void *, void *, void*) {
+//     while (true) {
+//         // Only calculate when R, Y, G have finished
+//         if (red_done && yellow_done && green_done) {
+//             uint64_t total_ns = red_timing_ns + yellow_timing_ns + green_timing_ns;
             
-            printk("====================================\n");
-            printk("======= WITHOUT DEBUG PRINTS =======\n");
-            printk("====================================\n");
-            printk("Red task: %lld microseconds\n", red_timing_ns / 1000);
-            printk("Yellow task: %lld microseconds\n", yellow_timing_ns / 1000);
-            printk("Green task: %lld microseconds\n", green_timing_ns / 1000);
-            printk("Total R->Y->G sequence time: %lld microseconds\n", total_ns / 1000);
-            printk("====================================\n");
-            printk("====================================\n");
+//             printk("====================================\n");
+//             printk("======= WITHOUT DEBUG PRINTS =======\n");
+//             printk("====================================\n");
+//             printk("Red task: %lld microseconds\n", red_timing_ns / 1000);
+//             printk("Yellow task: %lld microseconds\n", yellow_timing_ns / 1000);
+//             printk("Green task: %lld microseconds\n", green_timing_ns / 1000);
+//             printk("Total R->Y->G sequence time: %lld microseconds\n", total_ns / 1000);
+//             printk("====================================\n");
+//             printk("====================================\n");
 
-            // Reset flags for the next R->Y->G cycle
-            red_done = false;
-            yellow_done = false;
-            green_done = false;
-        }
-        k_msleep(10); // avoid busy wait
-    }
-}
+//             // Reset flags for the next R->Y->G cycle
+//             red_done = false;
+//             yellow_done = false;
+//             green_done = false;
+//         }
+//         k_msleep(10); // avoid busy wait
+//     }
+// }
 
 
 
@@ -332,23 +372,40 @@ static void uart_task(void *unused1, void *unused2, void *unused3)
     }
 }
 
-// Dispatcher Task
+
+
 static void dispatcher_task(void *unused1, void *unused2, void *unused3)
 {
     while (true) {
         struct data_t *rec_item = k_fifo_get(&dispatcher_fifo, K_FOREVER);
 
+        char custom_seq[20];
         strncpy(custom_seq, rec_item->msg, sizeof(custom_seq)-1);
         custom_seq[sizeof(custom_seq)-1] = '\0';
-        seq_len = strlen(custom_seq);
-        seq_index = 0;
-        mode = MANUAL;
 
-        printk("Dispatcher received sequence: %s\n", custom_seq);
-        
+        printk("Dispatcher received: %s\n", custom_seq);
+
+        // Accept HHMMSS format
+        if (strlen(custom_seq) == 6) {
+            int parsed_time = time_parse(custom_seq);
+
+            if (parsed_time >= 0) {
+                printk("Parsed time: %d seconds. Red LED will turn on after this delay.\n", parsed_time);
+
+                // Schedule red LED after parsed_time seconds
+                k_timer_start(&action_delay_timer, K_SECONDS(parsed_time), K_NO_WAIT);
+            } else {
+                printk("Invalid time input!\n");
+            }
+        } else {
+            printk("Invalid command. Expected HHMMSS format, e.g., 000005\n");
+        }
+
         k_free(rec_item);
     }
 }
+
+
 
 // Main
 int main(void)
@@ -374,4 +431,5 @@ K_THREAD_DEFINE(dis_thread, STACKSIZE, dispatcher_task, NULL, NULL, NULL, PRIORI
 K_THREAD_DEFINE(red_thread, STACKSIZE, red_led_task, NULL, NULL, NULL, PRIORITY, 0, 0);
 K_THREAD_DEFINE(yellow_thread, STACKSIZE, yellow_led_task, NULL, NULL, NULL, PRIORITY, 0, 0);
 K_THREAD_DEFINE(green_thread, STACKSIZE, green_led_task, NULL, NULL, NULL, PRIORITY, 0, 0);
-K_THREAD_DEFINE(monitor_thread, STACKSIZE, timing_monitor_task, NULL, NULL, NULL, PRIORITY, 0, 0);
+// K_THREAD_DEFINE(monitor_thread, STACKSIZE, timing_monitor_task, NULL, NULL, NULL, PRIORITY, 0, 0);
+
