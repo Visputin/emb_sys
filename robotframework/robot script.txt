@@ -1,0 +1,47 @@
+*** Settings ***
+Library    String
+Library    SerialLibrary
+
+*** Variables ***
+${COM}        COM7
+${BAUD}       115200
+${BOARD}      nRF
+
+# Test sequences
+${VALID_CMD}      000005        
+${INVALID_CMD}    123
+
+*** Test Cases ***
+Connect Serial
+    Log To Console    Connecting to ${BOARD}
+    Add Port    ${COM}    baudrate=${BAUD}    encoding=ascii
+    Port Should Be Open    ${COM}
+    Reset Input Buffer
+    Reset Output Buffer
+
+Test Valid HHMMSS Command
+    Log To Console    Sending valid sequence ${VALID_CMD}
+    Write Data        ${VALID_CMD}\n    encoding=ascii
+
+    # Read until newline or timeout
+    ${read}=    Read Until    terminator=10    timeout=2000    encoding=ascii
+    Log To Console    Received: ${read}
+
+    # Check dispatcher response
+    Should Contain     ${read}    Parsed time
+    Log To Console     Valid command accepted
+
+Test Invalid HHMMSS Command
+    Log To Console    Sending invalid sequence ${INVALID_CMD}
+    Write Data        ${INVALID_CMD}\n    encoding=ascii
+
+    ${read}=    Read Until    terminator=10    timeout=2000    encoding=ascii
+    Log To Console    Received: ${read}
+
+    # Should be rejected
+    Should Contain     ${read}    Invalid
+    Log To Console     Invalid command rejected
+
+Disconnect Serial
+    Log To Console     Disconnecting ${BOARD}
+    [TearDown]    Delete Port    ${COM}
